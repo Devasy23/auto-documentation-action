@@ -1,0 +1,651 @@
+name: Auto Documentation & Docstrings (Multi-Language)
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    types: [opened, synchronize]
+  workflow_dispatch:
+    inputs:
+      model_provider:
+        description: 'AI Model Provider'
+        required: false
+        default: 'anthropic'
+        type: choice
+        options:
+        - anthropic
+        - gemini
+
+env:
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+  MODEL_PROVIDER: ${{ github.event.inputs.model_provider || 'anthropic' }}
+
+jobs:
+  auto-documentation:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Debug API Configuration
+        run: |
+          echo "🔍 Debugging API Configuration..."
+          
+          if [ "$MODEL_PROVIDER" = "anthropic" ]; then
+            # Check if Anthropic secret is set
+            if [ -z "$ANTHROPIC_API_KEY" ]; then
+              echo "❌ ANTHROPIC_API_KEY is not set!"
+              echo "Please add ANTHROPIC_API_KEY to your repository secrets."
+              exit 1
+            fi
+            
+            echo "ANTHROPIC_API_KEY length: ${#ANTHROPIC_API_KEY}"
+            echo "ANTHROPIC_API_KEY prefix: ${ANTHROPIC_API_KEY:0:10}..."
+            
+            # Test API key format
+            if [[ "$ANTHROPIC_API_KEY" =~ ^sk-ant-[a-zA-Z0-9]+$ ]]; then
+              echo "✅ API key format looks correct (sk-ant-...)"
+            else
+              echo "⚠️ API key format may be incorrect"
+              echo "Expected format: sk-ant-... followed by alphanumeric characters"
+            fi
+            
+            # Test basic API connectivity
+            echo "🧪 Testing basic Anthropic API connectivity..."
+            TEST_RESPONSE=$(curl -s -w "HTTP_STATUS:%{http_code}" -X POST https://api.anthropic.com/v1/messages \
+              -H "Content-Type: application/json" \
+              -H "x-api-key: $ANTHROPIC_API_KEY" \
+              -H "anthropic-version: 2023-06-01" \
+              -d '{"model":"claude-3-sonnet-20240229","max_tokens":10,"messages":[{"role":"user","content":"Hello"}]}')
+            
+            TEST_HTTP_STATUS=$(echo "$TEST_RESPONSE" | grep -o "HTTP_STATUS:[0-9]*" | cut -d: -f2)
+            
+            if [ "$TEST_HTTP_STATUS" = "200" ]; then
+              echo "✅ Anthropic API connectivity successful"
+            else
+              echo "❌ Anthropic API test failed (Status: $TEST_HTTP_STATUS)"
+              exit 1
+            fi
+            
+          elif [ "$MODEL_PROVIDER" = "gemini" ]; then
+            # Check if Gemini secret is set
+            if [ -z "$GEMINI_API_KEY" ]; then
+              echo "❌ GEMINI_API_KEY is not set!"
+              echo "Please add GEMINI_API_KEY to your repository secrets."
+              exit 1
+            fi
+            
+            echo "GEMINI_API_KEY length: ${#GEMINI_API_KEY}"
+            echo "GEMINI_API_KEY prefix: ${GEMINI_API_KEY:0:10}..."
+            
+            # Test basic API connectivity
+            echo "🧪 Testing basic Gemini API connectivity..."
+            TEST_RESPONSE=$(curl -s -w "HTTP_STATUS:%{http_code}" -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$GEMINI_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d '{"contents":[{"parts":[{"text":"Hello"}]}]}')
+            
+            TEST_HTTP_STATUS=$(echo "$TEST_RESPONSE" | grep -o "HTTP_STATUS:[0-9]*" | cut -d: -f2)
+            
+            if [ "$TEST_HTTP_STATUS" = "200" ]; then
+              echo "✅ Gemini API connectivity successful"
+            else
+              echo "❌ Gemini API test failed (Status: $TEST_HTTP_STATUS)"
+              exit 1
+            fi
+            
+          else
+            echo "❌ Unknown model provider: $MODEL_PROVIDER"
+            exit 1
+          fi
+
+      - name: Setup AI API Helper
+        run: |
+          cat > ai_api_helper.py << 'EOF'
+          import json
+          import sys
+          import os
+          import requests
+          
+          def call_anthropic_api(prompt, max_tokens=3000):
+              api_key = os.environ.get('ANTHROPIC_API_KEY')
+              if not api_key:
+                  return None, "ANTHROPIC_API_KEY not set"
+              
+              url = "https://api.anthropic.com/v1/messages"
+              headers = {
+                  "Content-Type": "application/json",
+                  "x-api-key": api_key,
+                  "anthropic-version": "2023-06-01"
+              }
+              data = {
+                  "model": "claude-3-sonnet-20240229",
+                  "max_tokens": max_tokens,
+                  "messages": [{"role": "user", "content": prompt}]
+              }
+              
+              try:
+                  response = requests.post(url, headers=headers, json=data, timeout=60)
+                  if response.status_code == 200:
+                      result = response.json()
+                      content = result.get('content', [{}])[0].get('text', '')
+                      return content, None
+                  else:
+                      return None, f"HTTP {response.status_code}: {response.text[:200]}"
+              except Exception as e:
+                  return None, str(e)
+          
+          def call_gemini_api(prompt, max_tokens=3000):
+              api_key = os.environ.get('GEMINI_API_KEY')
+              if not api_key:
+                  return None, "GEMINI_API_KEY not set"
+              
+              url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+              headers = {"Content-Type": "application/json"}
+              data = {
+                  "contents": [{"parts": [{"text": prompt}]}],
+                  "generationConfig": {
+                      "maxOutputTokens": max_tokens,
+                      "temperature": 0.3
+                  }
+              }
+              
+              try:
+                  response = requests.post(url, headers=headers, json=data, timeout=60)
+                  if response.status_code == 200:
+                      result = response.json()
+                      candidates = result.get('candidates', [])
+                      if candidates:
+                          content = candidates[0].get('content', {}).get('parts', [{}])[0].get('text', '')
+                          return content, None
+                      else:
+                          return None, "No candidates in response"
+                  else:
+                      return None, f"HTTP {response.status_code}: {response.text[:200]}"
+              except Exception as e:
+                  return None, str(e)
+          
+          def call_ai_api(prompt, max_tokens=3000):
+              provider = os.environ.get('MODEL_PROVIDER', 'anthropic').lower()
+              
+              if provider == 'anthropic':
+                  return call_anthropic_api(prompt, max_tokens)
+              elif provider == 'gemini':
+                  return call_gemini_api(prompt, max_tokens)
+              else:
+                  return None, f"Unknown provider: {provider}"
+          
+          if __name__ == "__main__":
+              if len(sys.argv) < 2:
+                  print("Usage: python ai_api_helper.py <prompt_file> [max_tokens]")
+                  sys.exit(1)
+              
+              prompt_file = sys.argv[1]
+              max_tokens = int(sys.argv[2]) if len(sys.argv) > 2 else 3000
+              
+              try:
+                  with open(prompt_file, 'r', encoding='utf-8') as f:
+                      prompt = f.read()
+                  
+                  content, error = call_ai_api(prompt, max_tokens)
+                  
+                  if error:
+                      print(f"ERROR: {error}", file=sys.stderr)
+                      sys.exit(1)
+                  else:
+                      print(content)
+              except Exception as e:
+                  print(f"ERROR: {e}", file=sys.stderr)
+                  sys.exit(1)
+          EOF
+        run: |
+          if [ ! -f "CLAUDE.md" ]; then
+            echo "generating_claude_md=true" >> $GITHUB_OUTPUT
+            
+            echo "🤖 Analyzing repository to generate CLAUDE.md with AI..."
+            
+            # Gather repository information (avoiding nested heredocs)
+            echo "=== Gathering repository analysis ===" 
+            
+            # Create analysis file step by step
+            echo "Repository Analysis:" > repo_info.txt
+            echo "" >> repo_info.txt
+            
+            echo "Go Files:" >> repo_info.txt
+            find . -name "*.go" -not -path "./vendor/*" | head -20 >> repo_info.txt
+            echo "" >> repo_info.txt
+            
+            echo "TypeScript Files:" >> repo_info.txt
+            find . -name "*.ts" -o -name "*.tsx" -not -path "./node_modules/*" | head -10 >> repo_info.txt
+            echo "" >> repo_info.txt
+            
+            echo "Python Files:" >> repo_info.txt
+            find . -name "*.py" | head -10 >> repo_info.txt
+            echo "" >> repo_info.txt
+            
+            echo "Directory Structure:" >> repo_info.txt
+            find . -type d -not -path "./.git*" -not -path "./node_modules*" -not -path "./vendor*" | head -15 | sort >> repo_info.txt
+            echo "" >> repo_info.txt
+            
+            echo "Configuration Files:" >> repo_info.txt
+            find . -name "*.json" -o -name "*.yaml" -o -name "*.yml" -o -name "Dockerfile" -o -name "Makefile" -o -name "go.mod" | head -10 >> repo_info.txt
+            echo "" >> repo_info.txt
+            
+            if [ -f "package.json" ]; then
+              echo "Package.json:" >> repo_info.txt
+              head -20 package.json >> repo_info.txt
+            fi
+            
+            if [ -f "go.mod" ]; then
+              echo "Go.mod:" >> repo_info.txt
+              cat go.mod >> repo_info.txt
+            fi
+            
+            # Create prompt file
+            cat > claude_prompt.txt << 'PROMPT_EOF'
+          You are a technical documentation expert. Analyze this repository structure and create a comprehensive CLAUDE.md file that will serve as context for AI assistants working on this codebase.
+
+          Create a CLAUDE.md file that includes:
+          1. **Project Overview** - Intelligent analysis of what this project does based on the structure
+          2. **Architecture** - Infer the architecture from the directory structure and file types
+          3. **Key Components** - Identify main modules/packages and their purposes
+          4. **Technology Stack** - List technologies based on file types and configs
+          5. **Development Guidelines** - Appropriate coding standards for the languages used
+          6. **Build & Run Instructions** - Smart commands based on the project type
+          7. **Testing Strategy** - Testing approaches for the identified languages
+          8. **API Documentation** - If web APIs are detected
+          9. **Deployment** - If infrastructure files are found
+
+          Make it comprehensive but concise. Focus on what an AI assistant would need to understand to effectively help with this codebase.
+
+          Repository Information:
+          PROMPT_EOF
+            
+      - name: Check/Generate CLAUDE.md
+        id: claude-md
+        run: |
+          if [ ! -f "CLAUDE.md" ]; then
+            echo "generating_claude_md=true" >> $GITHUB_OUTPUT
+            
+            echo "🤖 Analyzing repository to generate CLAUDE.md with AI..."
+            echo "🔧 Using provider: $MODEL_PROVIDER"
+            
+            # Gather repository information
+            echo "=== Gathering repository analysis ===" 
+            
+            # Create analysis file step by step
+            echo "Repository Analysis:" > repo_info.txt
+            echo "" >> repo_info.txt
+            
+            echo "Go Files:" >> repo_info.txt
+            find . -name "*.go" -not -path "./vendor/*" | head -20 >> repo_info.txt
+            echo "" >> repo_info.txt
+            
+            echo "TypeScript Files:" >> repo_info.txt
+            find . -name "*.ts" -o -name "*.tsx" -not -path "./node_modules/*" | head -10 >> repo_info.txt
+            echo "" >> repo_info.txt
+            
+            echo "Python Files:" >> repo_info.txt
+            find . -name "*.py" | head -10 >> repo_info.txt
+            echo "" >> repo_info.txt
+            
+            echo "Directory Structure:" >> repo_info.txt
+            find . -type d -not -path "./.git*" -not -path "./node_modules*" -not -path "./vendor*" | head -15 | sort >> repo_info.txt
+            echo "" >> repo_info.txt
+            
+            echo "Configuration Files:" >> repo_info.txt
+            find . -name "*.json" -o -name "*.yaml" -o -name "*.yml" -o -name "Dockerfile" -o -name "Makefile" -o -name "go.mod" | head -10 >> repo_info.txt
+            echo "" >> repo_info.txt
+            
+            if [ -f "package.json" ]; then
+              echo "Package.json:" >> repo_info.txt
+              head -20 package.json >> repo_info.txt
+            fi
+            
+            if [ -f "go.mod" ]; then
+              echo "Go.mod:" >> repo_info.txt
+              cat go.mod >> repo_info.txt
+            fi
+            
+            # Create prompt file
+            cat > claude_prompt.txt << 'PROMPT_EOF'
+You are a technical documentation expert. Analyze this repository structure and create a comprehensive CLAUDE.md file that will serve as context for AI assistants working on this codebase.
+
+Create a CLAUDE.md file that includes:
+1. **Project Overview** - Intelligent analysis of what this project does based on the structure
+2. **Architecture** - Infer the architecture from the directory structure and file types
+3. **Key Components** - Identify main modules/packages and their purposes
+4. **Technology Stack** - List technologies based on file types and configs
+5. **Development Guidelines** - Appropriate coding standards for the languages used
+6. **Build & Run Instructions** - Smart commands based on the project type
+7. **Testing Strategy** - Testing approaches for the identified languages
+8. **API Documentation** - If web APIs are detected
+9. **Deployment** - If infrastructure files are found
+
+Make it comprehensive but concise. Focus on what an AI assistant would need to understand to effectively help with this codebase.
+
+Repository Information:
+PROMPT_EOF
+            
+            # Append repository analysis to prompt
+            cat repo_info.txt >> claude_prompt.txt
+            
+            # Call AI API using our helper
+            echo "📡 Calling $MODEL_PROVIDER API to generate CLAUDE.md..."
+            CLAUDE_CONTENT=$(python3 ai_api_helper.py claude_prompt.txt 3000 2>/dev/null)
+            
+            if [ $? -eq 0 ] && [ -n "$CLAUDE_CONTENT" ]; then
+              echo "$CLAUDE_CONTENT" > CLAUDE.md
+              echo "✅ Generated intelligent CLAUDE.md using $MODEL_PROVIDER AI"
+            else
+              echo "⚠️ Failed to generate content with $MODEL_PROVIDER"
+              echo "Creating fallback CLAUDE.md..."
+              cat > CLAUDE.md << 'FALLBACK_EOF'
+# Project Documentation - AI Context
+
+## Project Overview
+Multi-language application with support for Go, TypeScript, and Python.
+
+## Key Commands
+- `go build`: Build Go applications
+- `go test ./...`: Run Go tests
+- `npm run build`: Build TypeScript projects
+
+## Documentation Standards
+- Go: Use // FunctionName does... format
+- TypeScript: Use /** @description */ TSDoc format
+- Python: Use triple-quote docstrings
+FALLBACK_EOF
+              echo "⚠️ Used fallback template for CLAUDE.md"
+            fi
+            
+            # Cleanup temporary files
+            rm -f claude_prompt.txt repo_info.txt
+            
+          else
+            echo "generating_claude_md=false" >> $GITHUB_OUTPUT
+            echo "✅ CLAUDE.md already exists"
+          fi
+
+      - name: Find Files Needing Documentation
+        id: find-files
+        run: |
+          echo "Scanning for files without proper documentation..."
+          
+          GO_FILES=""
+          TS_FILES=""
+          PY_FILES=""
+          TOTAL_FILES=0
+          
+          # Process Go files
+          for file in $(find . -name "*.go" -not -path "./vendor/*" -not -path "./.git/*"); do
+            echo "Checking Go file: $file..."
+            
+            EXPORTED_FUNCS=$(grep -c "^func [A-Z]" "$file" 2>/dev/null || echo "0")
+            DOCUMENTED_FUNCS=$(grep -B1 "^func [A-Z]" "$file" 2>/dev/null | grep -c "^//" || echo "0")
+            
+            [[ ! "$EXPORTED_FUNCS" =~ ^[0-9]+$ ]] && EXPORTED_FUNCS=0
+            [[ ! "$DOCUMENTED_FUNCS" =~ ^[0-9]+$ ]] && DOCUMENTED_FUNCS=0
+            
+            echo "  → Go Exported: $EXPORTED_FUNCS, Documented: $DOCUMENTED_FUNCS"
+            
+            if [ "$EXPORTED_FUNCS" -gt "$DOCUMENTED_FUNCS" ] && [ "$EXPORTED_FUNCS" -gt 0 ]; then
+              echo "  → Needs Go docstrings"
+              GO_FILES="$GO_FILES $file"
+              TOTAL_FILES=$((TOTAL_FILES + 1))
+            fi
+          done
+          
+          # Process TypeScript files
+          for file in $(find . -name "*.ts" -o -name "*.tsx" -not -path "./node_modules/*" -not -path "./.git/*"); do
+            echo "Checking TypeScript file: $file..."
+            
+            # Look for exported functions, classes, interfaces
+            EXPORTED_ITEMS=$(grep -c "^export \(function\|class\|interface\|const\|type\)" "$file" 2>/dev/null || echo "0")
+            DOCUMENTED_ITEMS=$(grep -B1 "^export \(function\|class\|interface\|const\|type\)" "$file" 2>/dev/null | grep -c "/\*\*" || echo "0")
+            
+            [[ ! "$EXPORTED_ITEMS" =~ ^[0-9]+$ ]] && EXPORTED_ITEMS=0
+            [[ ! "$DOCUMENTED_ITEMS" =~ ^[0-9]+$ ]] && DOCUMENTED_ITEMS=0
+            
+            echo "  → TS Exported: $EXPORTED_ITEMS, Documented: $DOCUMENTED_ITEMS"
+            
+            if [ "$EXPORTED_ITEMS" -gt "$DOCUMENTED_ITEMS" ] && [ "$EXPORTED_ITEMS" -gt 0 ]; then
+              echo "  → Needs TypeScript documentation"
+              TS_FILES="$TS_FILES $file"
+              TOTAL_FILES=$((TOTAL_FILES + 1))
+            fi
+          done
+          
+          # Process Python files
+          for file in $(find . -name "*.py" -not -path "./.git/*"); do
+            echo "Checking Python file: $file..."
+            
+            # Look for function and class definitions
+            PYTHON_DEFS=$(grep -c "^def \|^class " "$file" 2>/dev/null || echo "0")
+            PYTHON_DOCS=$(grep -A1 "^def \|^class " "$file" 2>/dev/null | grep -c '"""' || echo "0")
+            
+            [[ ! "$PYTHON_DEFS" =~ ^[0-9]+$ ]] && PYTHON_DEFS=0
+            [[ ! "$PYTHON_DOCS" =~ ^[0-9]+$ ]] && PYTHON_DOCS=0
+            
+            echo "  → Python Definitions: $PYTHON_DEFS, Documented: $PYTHON_DOCS"
+            
+            if [ "$PYTHON_DEFS" -gt "$PYTHON_DOCS" ] && [ "$PYTHON_DEFS" -gt 0 ]; then
+              echo "  → Needs Python docstrings"
+              PY_FILES="$PY_FILES $file"
+              TOTAL_FILES=$((TOTAL_FILES + 1))
+            fi
+          done
+          
+          echo "go_files=$GO_FILES" >> $GITHUB_OUTPUT
+          echo "ts_files=$TS_FILES" >> $GITHUB_OUTPUT
+          echo "py_files=$PY_FILES" >> $GITHUB_OUTPUT
+          echo "total_files=$TOTAL_FILES" >> $GITHUB_OUTPUT
+          echo "Found $TOTAL_FILES files needing documentation"
+
+      - name: Generate Go Docstrings
+        if: steps.find-files.outputs.go_files != ''
+        run: |
+          FILES="${{ steps.find-files.outputs.go_files }}"
+          UPDATED_FILES=0
+          
+          for FILE in $FILES; do
+            echo "Processing Go file: $FILE..."
+            
+            # Create a more robust prompt
+            cat > prompt.txt << 'EOF'
+You are a Go documentation expert. Add proper Go docstrings to all exported functions in this file.
+
+Rules:
+1. Start docstring with function name
+2. Use // FunctionName does... format
+3. Explain what the function does clearly
+4. Document parameters and return values if complex
+5. Keep it concise but informative
+
+Return ONLY the complete Go file with docstrings added, no markdown formatting.
+
+File content:
+EOF
+            
+            # Add file content to prompt
+            cat "$FILE" >> prompt.txt
+            
+            # Call AI API using our helper
+            echo "📡 Calling $MODEL_PROVIDER API for Go docstrings..."
+            NEW_CONTENT=$(python3 ai_api_helper.py prompt.txt 4000 2>/dev/null)
+            
+            if [ $? -eq 0 ] && [ -n "$NEW_CONTENT" ] && echo "$NEW_CONTENT" | grep -q "package\|func"; then
+              echo "$NEW_CONTENT" > "$FILE"
+              echo "✅ Updated Go file: $FILE"
+              UPDATED_FILES=$((UPDATED_FILES + 1))
+            else
+              echo "⚠️ No valid content generated for $FILE"
+            fi
+            
+            # Rate limiting
+            sleep 3
+            
+            # Clean up
+            rm -f prompt.txt
+          done
+          
+          echo "Updated $UPDATED_FILES Go files successfully"
+
+      - name: Generate TypeScript Documentation  
+        if: steps.find-files.outputs.ts_files != ''
+        run: |
+          FILES="${{ steps.find-files.outputs.ts_files }}"
+          UPDATED_FILES=0
+          
+          for FILE in $FILES; do
+            echo "Processing TypeScript file: $FILE..."
+            
+            # Create TypeScript-specific prompt
+            cat > ts_prompt.txt << 'EOF'
+You are a TypeScript documentation expert. Add proper TSDoc comments to all exported functions, classes, and interfaces.
+
+Rules:
+1. Use /** */ TSDoc comment format
+2. Add @description, @param, @returns tags where appropriate  
+3. Document all exported items
+4. Follow JSDoc/TSDoc conventions
+5. Keep descriptions clear and concise
+
+Return ONLY the complete TypeScript file with TSDoc comments added, no markdown formatting.
+
+File content:
+EOF
+            
+            cat "$FILE" >> ts_prompt.txt
+            
+            # Call AI API using our helper
+            echo "📡 Calling $MODEL_PROVIDER API for TypeScript documentation..."
+            NEW_CONTENT=$(python3 ai_api_helper.py ts_prompt.txt 4000 2>/dev/null)
+            
+            if [ $? -eq 0 ] && [ -n "$NEW_CONTENT" ] && echo "$NEW_CONTENT" | grep -q "import\|export\|function\|class\|interface"; then
+              echo "$NEW_CONTENT" > "$FILE"
+              echo "✅ Updated TypeScript file: $FILE"
+              UPDATED_FILES=$((UPDATED_FILES + 1))
+            else
+              echo "⚠️ No valid content generated for $FILE"
+            fi
+            
+            sleep 3
+            rm -f ts_prompt.txt
+          done
+          
+          echo "Updated $UPDATED_FILES TypeScript files successfully"
+
+      - name: Generate Python Docstrings
+        if: steps.find-files.outputs.py_files != ''
+        run: |
+          FILES="${{ steps.find-files.outputs.py_files }}"
+          UPDATED_FILES=0
+          
+          for FILE in $FILES; do
+            echo "Processing Python file: $FILE..."
+            
+            # Create Python-specific prompt
+            cat > py_prompt.txt << 'EOF'
+You are a Python documentation expert. Add proper docstrings to all functions and classes.
+
+Rules:
+1. Use triple-quote docstrings """
+2. Follow Google or NumPy docstring style
+3. Include Args:, Returns:, and Raises: sections where appropriate
+4. Place docstring immediately after function/class definition
+5. Keep descriptions clear and concise
+
+Return ONLY the complete Python file with docstrings added, no markdown formatting.
+
+File content:
+EOF
+            
+            cat "$FILE" >> py_prompt.txt
+            
+            # Call AI API using our helper
+            echo "📡 Calling $MODEL_PROVIDER API for Python docstrings..."
+            NEW_CONTENT=$(python3 ai_api_helper.py py_prompt.txt 4000 2>/dev/null)
+            
+            if [ $? -eq 0 ] && [ -n "$NEW_CONTENT" ] && echo "$NEW_CONTENT" | grep -q "def \|class \|import"; then
+              echo "$NEW_CONTENT" > "$FILE"
+              echo "✅ Updated Python file: $FILE"
+              UPDATED_FILES=$((UPDATED_FILES + 1))
+            else
+              echo "⚠️ No valid content generated for $FILE"
+            fi
+            
+            sleep 3
+            rm -f py_prompt.txt
+          done
+          
+          echo "Updated $UPDATED_FILES Python files successfully"
+
+      - name: Check for Changes
+        id: check-changes
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "changes_detected=true" >> $GITHUB_OUTPUT
+            echo "✅ Multi-language changes detected!"
+            git status
+          else
+            echo "changes_detected=false" >> $GITHUB_OUTPUT
+            echo "ℹ️ No changes detected"
+          fi
+
+      - name: Commit Changes to Review Branch
+        if: steps.check-changes.outputs.changes_detected == 'true'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action Bot"
+          
+          BRANCH_NAME="docs/multi-lang-$(date +%Y%m%d-%H%M%S)"
+          git checkout -b "$BRANCH_NAME"
+          git add .
+          git commit -m "docs: Auto-generated multi-language documentation
+
+          - Added/updated CLAUDE.md for AI context
+          - Generated Go docstrings for exported functions
+          - Generated TypeScript TSDoc comments for exports
+          - Generated Python docstrings for functions and classes
+          - Processed ${{ steps.find-files.outputs.total_files }} files total
+          
+          Generated by: GitHub Actions Multi-Language Auto-Documentation"
+          
+          git push origin "$BRANCH_NAME"
+          
+          echo "## 🎯 Multi-Language Documentation Update Complete!" >> $GITHUB_STEP_SUMMARY
+          echo "**Review Branch**: \`$BRANCH_NAME\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Total Files Processed**: ${{ steps.find-files.outputs.total_files }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Summary
+        run: |
+          echo "## 📊 Multi-Language Workflow Results" >> $GITHUB_STEP_SUMMARY
+          echo "- **CLAUDE.md**: ${{ steps.claude-md.outputs.generating_claude_md == 'true' && '✅ Generated' || '✅ Exists' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Go Files**: $(find . -name "*.go" | wc -l) scanned" >> $GITHUB_STEP_SUMMARY
+          echo "- **TypeScript Files**: $(find . -name "*.ts" -o -name "*.tsx" | wc -l) scanned" >> $GITHUB_STEP_SUMMARY
+          echo "- **Python Files**: $(find . -name "*.py" | wc -l) scanned" >> $GITHUB_STEP_SUMMARY
+          echo "- **Files Needing Documentation**: ${{ steps.find-files.outputs.total_files }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **AI Provider**: ✅ $MODEL_PROVIDER" >> $GITHUB_STEP_SUMMARY
+          echo "- **Changes**: ${{ steps.check-changes.outputs.changes_detected == 'true' && '✅ Review branch created' || 'ℹ️ No changes needed' }}" >> $GITHUB_STEP_SUMMARY
