@@ -10,7 +10,7 @@ on:
       model_provider:
         description: 'AI Model Provider'
         required: false
-        default: 'anthropic'
+        default: 'gemini'
         type: choice
         options:
         - anthropic
