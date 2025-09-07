@@ -32,7 +32,7 @@ jobs:
       - name: Auto Documentation & Docstrings
         uses: devasy23/auto-documentation-action@v1.0.0
         with:
-          model_provider: ${{ github.event.inputs.model_provider || 'anthropic' }}
+          model_provider: ${{ github.event.inputs.model_provider || 'gemini' }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           target_branches: 'main,develop'
