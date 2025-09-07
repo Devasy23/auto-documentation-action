@@ -1,6 +1,6 @@
 name: 'Auto Documentation & Docstrings'
 description: 'Automatically generate documentation and docstrings for multi-language codebases using AI (Anthropic Claude or Google Gemini)'
-author: 'Your Name'
+author: 'Devasy23'
 
 branding:
   icon: 'book-open'
