@@ -1,0 +1,22 @@
+{
+  "language": "TypeScript",
+  "extensions": ["ts", "tsx"],
+  "detection_logic": {
+    "definitions": "^export (function|class|interface|const|type)",
+    "documented": "/\\*\\*"
+  },
+  "prompt": [
+    "You are a TypeScript documentation expert. Add proper TSDoc comments to all exported functions, classes, and interfaces.",
+    "",
+    "Rules:",
+    "1. Use /** */ TSDoc comment format",
+    "2. Add @description, @param, @returns tags where appropriate",
+    "3. Document all exported items",
+    "4. Follow JSDoc/TSDoc conventions",
+    "5. Keep descriptions clear and concise",
+    "",
+    "Return ONLY the complete TypeScript file with TSDoc comments added, no markdown formatting.",
+    "",
+    "File content:"
+  ]
+}

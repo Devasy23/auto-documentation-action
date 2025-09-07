@@ -1,0 +1,22 @@
+{
+  "language": "Java",
+  "extensions": ["java"],
+  "detection_logic": {
+    "definitions": "public|protected|private",
+    "documented": "/\\*\\*"
+  },
+  "prompt": [
+    "You are a Java documentation expert. Add proper Javadoc comments to all methods and classes.",
+    "",
+    "Rules:",
+    "1. Use /** */ Javadoc comment format",
+    "2. Add @param, @return, @throws tags where appropriate",
+    "3. Document all public methods and classes",
+    "4. Follow Javadoc conventions",
+    "5. Keep descriptions clear and concise",
+    "",
+    "Return ONLY the complete Java file with Javadoc comments added, no markdown formatting.",
+    "",
+    "File content:"
+  ]
+}

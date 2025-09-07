@@ -1,0 +1,22 @@
+{
+  "language": "Go",
+  "extensions": ["go"],
+  "detection_logic": {
+    "definitions": "^func [A-Z]",
+    "documented": "^// "
+  },
+  "prompt": [
+    "You are a Go documentation expert. Add proper Go docstrings to all exported functions in this file.",
+    "",
+    "Rules:",
+    "1. Start docstring with function name",
+    "2. Use // FunctionName does... format",
+    "3. Explain what the function does clearly",
+    "4. Document parameters and return values if complex",
+    "5. Keep it concise but informative",
+    "",
+    "Return ONLY the complete Go file with docstrings added, no markdown formatting.",
+    "",
+    "File content:"
+  ]
+}
