@@ -30,7 +30,7 @@ jobs:
           fetch-depth: 0
 
       - name: Auto Documentation & Docstrings
-        uses: Devasy23/auto-documentation-action@v1
+        uses: devasy23/auto-documentation-action@v1
         with:
           model_provider: ${{ github.event.inputs.model_provider || 'anthropic' }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}

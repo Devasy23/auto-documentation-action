@@ -64,7 +64,7 @@ jobs:
           fetch-depth: 0
 
       - name: Auto Documentation & Docstrings
-        uses: your-username/auto-documentation-action@v1
+        uses: devasy23/auto-documentation-action@v1
         with:
           model_provider: 'anthropic'
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -74,7 +74,7 @@ jobs:
 
 ```yaml
       - name: Auto Documentation & Docstrings
-        uses: your-username/auto-documentation-action@v1
+        uses: devasy23/auto-documentation-action@v1
         with:
           model_provider: 'gemini'
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
@@ -84,7 +84,7 @@ jobs:
 
 ```yaml
       - name: Auto Documentation & Docstrings
-        uses: your-username/auto-documentation-action@v1
+        uses: devasy23/auto-documentation-action@v1
         with:
           model_provider: 'anthropic'
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -123,7 +123,7 @@ jobs:
           fetch-depth: 0
 
       - name: Auto Documentation & Docstrings
-        uses: your-username/auto-documentation-action@v1
+        uses: devasy23/auto-documentation-action@v1
         with:
           model_provider: ${{ github.event.inputs.model_provider }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
