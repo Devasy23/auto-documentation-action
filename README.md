@@ -4,7 +4,7 @@ A GitHub Action that automatically generates comprehensive documentation and doc
 
 ## 🚀 Features
 
-- **Multi-language Support**: Works with Go, TypeScript, and Python
+- **Multi-language Support**: Works with Go, TypeScript, Python and Java. Easily extensible to other languages.
 - **AI-Powered**: Uses either Anthropic Claude or Google Gemini for intelligent documentation generation
 - **Automatic Detection**: Scans your codebase and identifies files that need documentation
 - **Smart Documentation**: Generates appropriate docstrings following language-specific conventions
@@ -18,6 +18,7 @@ A GitHub Action that automatically generates comprehensive documentation and doc
 | **Go** | `// FunctionName does...` | Exported functions, parameters, return values |
 | **TypeScript** | `/** @description */` TSDoc | Functions, classes, interfaces with JSDoc tags |
 | **Python** | `"""Triple quotes"""` | Functions and classes with Google/NumPy style |
+| **Java** | `/** Javadoc */` | Public methods and classes with Javadoc tags |
 
 ## 🔧 Setup
 
@@ -150,6 +151,35 @@ jobs:
 | `context_md_generated` | Whether AI_CONTEXT.md was generated (`true`/`false`) |
 | `branch_created` | Name of the branch created with changes |
 
+## 🧩 Extending the Action
+
+This action is designed to be easily extensible to support new languages. To add support for a new language, you need to create a new JSON configuration file in the `config` directory.
+
+For example, to add support for a new language called "MyLang", you would create a file named `config/mylang.json` with the following structure:
+
+```json
+{
+  "language": "MyLang",
+  "extensions": ["mylang"],
+  "detection_logic": {
+    "definitions": "regex_to_find_definitions",
+    "documented": "regex_to_find_documented_definitions"
+  },
+  "prompt": [
+    "Prompt to generate documentation for MyLang..."
+  ]
+}
+```
+
+- `language`: The name of the language.
+- `extensions`: An array of file extensions for the language.
+- `detection_logic`:
+  - `definitions`: A regular expression to find the total number of definitions (functions, classes, etc.) in a file.
+  - `documented`: A regular expression to find the number of already documented definitions.
+- `prompt`: An array of strings that will be joined to form the prompt for the AI model.
+
+The action will automatically pick up the new configuration file and start processing files for the new language.
+
 ## 🔍 What It Does
 
 1. **Repository Analysis**: Scans your codebase structure and creates a comprehensive AI_CONTEXT.md file
@@ -158,52 +188,6 @@ jobs:
 4. **Quality Validation**: Ensures generated content follows language-specific conventions
 5. **Branch Creation**: Creates a new branch with all documentation changes
 6. **Summary Report**: Provides a detailed summary of what was processed and updated
-
-## 📋 Example Output
-
-The action will create documentation like this:
-
-### Go
-```go
-// CalculateTotal calculates the total sum of all items in the given slice.
-// It accepts a slice of integers and returns the computed total.
-// Returns 0 if the slice is empty or nil.
-func CalculateTotal(items []int) int {
-    // ... existing code
-}
-```
-
-### TypeScript
-```typescript
-/**
- * @description Validates user input and returns formatted data
- * @param input - The raw user input string
- * @param options - Configuration options for validation
- * @returns Promise resolving to validated and formatted data
- */
-export async function validateInput(input: string, options: ValidationOptions): Promise<ValidatedData> {
-    // ... existing code
-}
-```
-
-### Python
-```python
-def process_data(data: List[Dict], filter_key: str) -> List[Dict]:
-    """
-    Processes and filters a list of dictionaries based on the specified key.
-    
-    Args:
-        data: List of dictionaries to process
-        filter_key: The key to use for filtering data
-        
-    Returns:
-        List of filtered and processed dictionaries
-        
-    Raises:
-        ValueError: If filter_key is not found in any dictionary
-    """
-    # ... existing code
-```
 
 ## 🎨 Generated AI_CONTEXT.md
 
