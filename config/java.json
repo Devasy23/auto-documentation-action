@@ -2,20 +2,33 @@
   "language": "Java",
   "extensions": ["java"],
   "detection_logic": {
-    "definitions": "public|protected|private",
-    "documented": "/\\*\\*"
+    "definitions": "(public|protected|private).*(class|interface|enum)|public\\s+[\\w<>\\[\\],\\s]+\\s+\\w+\\s*\\(|(protected|private)\\s+[\\w<>\\[\\],\\s]+\\s+\\w+\\s*\\(",
+    "documented": "/\\*\\*[\\s\\S]*?\\*/"
+  },
+  "validation": {
+    "required_constructs": ["class", "public", "private", "protected"],
+    "style_guide": "javadoc"
   },
   "prompt": [
-    "You are a Java documentation expert. Add proper Javadoc comments to all methods and classes.",
+    "You are a Java documentation expert. Add proper Javadoc comments to all methods, classes, and interfaces.",
     "",
-    "Rules:",
-    "1. Use /** */ Javadoc comment format",
-    "2. Add @param, @return, @throws tags where appropriate",
-    "3. Document all public methods and classes",
-    "4. Follow Javadoc conventions",
-    "5. Keep descriptions clear and concise",
+    "CRITICAL RULES - MUST FOLLOW:",
+    "1. Use /** */ Javadoc comment format ONLY",
+    "2. Add @param for every parameter with description",
+    "3. Add @return for non-void methods with description", 
+    "4. Add @throws for checked exceptions",
+    "5. Document ALL public, protected, and package-private methods and classes",
+    "6. Use proper HTML tags where needed (@code, @link)",
+    "7. Keep descriptions clear, concise, and professional",
+    "8. Preserve ALL original code structure and formatting",
     "",
-    "Return ONLY the complete Java file with Javadoc comments added, no markdown formatting.",
+    "VALIDATION REQUIREMENTS:",
+    "- Every public method MUST have Javadoc",
+    "- Every class MUST have class-level Javadoc",
+    "- Parameter descriptions must be meaningful",
+    "- Return value descriptions must explain what is returned",
+    "",
+    "Return ONLY the complete, syntactically correct Java file with Javadoc comments added. NO markdown formatting, NO explanations, NO code blocks.",
     "",
     "File content:"
   ]
