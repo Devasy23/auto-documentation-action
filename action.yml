@@ -37,6 +37,25 @@ outputs:
 runs:
   using: 'composite'
   steps:
+    - name: Validate Inputs
+      shell: bash
+      run: |
+        # Input validation for security
+        if [[ "${{ inputs.model_provider }}" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+          echo "✅ Model provider validation passed"
+        else
+          echo "❌ Invalid model provider format"
+          exit 1
+        fi
+        
+        # Validate branch names
+        if [[ "${{ inputs.target_branches }}" =~ ^[a-zA-Z0-9_,-/]+$ ]]; then
+          echo "✅ Target branches validation passed"
+        else
+          echo "❌ Invalid target branches format"
+          exit 1
+        fi
+
     - name: Setup Environment
       shell: bash
       env:
