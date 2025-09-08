@@ -1,0 +1,22 @@
+{
+  "language": "Python",
+  "extensions": ["py"],
+  "detection_logic": {
+    "definitions": "^def |^class ",
+    "documented": "\"\"\""
+  },
+  "prompt": [
+    "You are a Python documentation expert. Add proper docstrings to all functions and classes.",
+    "",
+    "Rules:",
+    "1. Use triple-quote docstrings \"\"\"",
+    "2. Follow Google or NumPy docstring style",
+    "3. Include Args:, Returns:, and Raises: sections where appropriate",
+    "4. Place docstring immediately after function/class definition",
+    "5. Keep descriptions clear and concise",
+    "",
+    "Return ONLY the complete Python file with docstrings added, no markdown formatting.",
+    "",
+    "File content:"
+  ]
+}
